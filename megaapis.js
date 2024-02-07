@@ -2,6 +2,8 @@ const axios = require("axios");
 const dotenv = require("dotenv");
 dotenv.config();
 
+console.log("CANDIDATE_ID: ", process.env.CANDIDATE_ID);
+
 class Megaverse {
   constructor() {
     this.candidateId = process.env.CANDIDATE_ID;
@@ -21,94 +23,97 @@ class Megaverse {
       });
 
       console.log(
-        `${data.planet} set successfully at row: ${data.row}, column: ${
+        `${data.entity} set successfully at row: ${data.row}, column: ${
           data.column
         }${data.color ? ", and with color: " + data.color : ""}${
           data.direction ? ", and direction: " + data.direction : ""
         }`
       );
-      return;
+
+      return response.data;
     } catch (error) {
       console.error("Error send post ", error.message);
     }
   }
+
+  async delete(endpoint, data) {
+    try {
+      const response = await this.app.delete(endpoint, {
+        data: {
+          ...data,
+          candidateId: this.candidateId,
+        },
+      });
+
+      console.log(
+        `${data.entity} deleted successfully at row: ${data.row}, column: ${
+          data.column
+        }`
+      );
+
+      return response.data;
+    } catch (error) {
+      console.error("Error delete ", error.message);
+    }
+  }
 }
 
-const getGoalMap = (candidateId) => {
-  const goalURL = "/map/" + candidateId + "/goal";
-  console.log(goalURL);
-  return app
-    .get(goalURL)
-    .then((result) => {
-      const mapdata = result.data;
-      // console.log("Goal Map: ", mapdata);
-      // console.log(JSON.stringify(mapdata));
-      // console.log(
-      //   "The map is length",
-      //   mapdata["goal"].length,
-      //   " and width",
-      //   mapdata["goal"][0].length
-      // );
-      return result.data;
-    })
-    .catch((err) => {
-      console.log(err);
-    });
+const getGoalMap = async () => {
+  const goalURL = `https://challenge.crossmint.io/api/map/${process.env.CANDIDATE_ID}/goal`;
+  try {
+    const result = await axios.get(goalURL);
+    const mapdata = result.data;
+    console.log("Goal map data: ", mapdata);
+    return mapdata['goal'];
+  } catch (error) {
+    console.error("Error get goal map ", error.message);
+  }
 };
 
-const findPlanet = (map) => {
-  for (let i = 0; i < map.length; i++) {
-    for (let j = 0; j < map[i].length; j++) {
-      if (map[i][j] !== "SPACE") {
-        if (map[i][j] === "POLYANET") {
-          setPolyanets(i, j);
-        } else if (map[i][j].includes("SOLOON")) {
-          if (map[i][j].includes("RED")) {
-            setSoloons(i, j, "red");
-          }
-          if (map[i][j].includes("BLUE")) {
-            setSoloons(i, j, "blue");
-          }
-          if (map[i][j].includes("PURPLE")) {
-            setSoloons(i, j, "purple");
-          }
-          if (map[i][j].includes("WHITE")) {
-            setSoloons(i, j, "white");
-          }
-        } else if (map[i][j].includes("COMETH")) {
-          if (map[i][j].includes("UP")) {
-            setCometh(i, j, "up");
-          }
-          if (map[i][j].includes("DOWN")) {
-            setCometh(i, j, "down");
-          }
-          if (map[i][j].includes("LEFT")) {
-            setCometh(i, j, "left");
-          }
-          if (map[i][j].includes("RIGHT")) {
-            setCometh(i, j, "right");
-          }
+const myMegaverse = new Megaverse();
+
+const drawMyMegaverse = async (map) => {
+  let promises = [];
+
+  for (let i = 0; i < map.length; i++){
+    for (let j = 0; j < map[i].length; j++){
+      const value = map[i][j];
+      if (value !== "SPACE") {
+        const [prefix, suffix] = value.split("_");
+        if (value === "POLYANET") {
+          promises.push(myMegaverse.set("/polyanets", { entity: "POLYANETS", row: i, column: j }));
         }
+        else if (suffix === "SOLOON" && prefix && ["WHITE", "RED", "BLUE", "PURPLE"].includes(prefix)) {
+          promises.push(myMegaverse.set("/soloons", { entity: "SOLOONS", row: i, column: j, color: prefix.toLowerCase() }));
+        }
+        else if (suffix === "COMETH" && prefix && ["UP", "DOWN", "LEFT", "RIGHT"].includes(prefix)) {
+          promises.push(myMegaverse.set("/comeths", { entity: "COMETHS", row: i, column: j, direction: prefix.toLowerCase() }));
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 1500));
       }
     }
-  }
-  return [-1, -1];
-};
-
-const resetPlanets = (map) => {
-  for (let i = 0; i < map.length; i++) {
-    for (let j = 0; j < map[i].length; j++) {
-      if (map[i][j] === "POLYANET") {
-        deletePolyanets(i, j);
-      } else if (map[i][j].includes("SOLOON")) {
-        deleteSoloons(i, j);
-      } else if (map[i][j].includes("COMETH")) {
-        deleteCometh(i, j);
-      }
+  };
+    
+  const results = await Promise.allSettled(promises);
+  results.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      console.log(`POST ${index + 1} success:`, result.value);
+    } else {
+      console.error(`POST ${index + 1} FAILED:`, result.reason);
     }
-  }
-};
+  });
+}
 
-// const map = getGoalMap(candidateId);
-// setPolyanets(1, 1);
-deletePolyanets(1, 1);
+async function run() {
+  try{
+
+    const goalMap = await getGoalMap();
+    await drawMyMegaverse(goalMap);
+    console.log("DRAW MY MEGAVERSE");
+  } catch (error) {
+    console.error("Error run ", error.message);
+  }
+}
+
+run();
